@@ -1,0 +1,3 @@
+name: sql-server-test-environment
+runtime: nodejs
+description: A Pulumi stack that creates a configurable SQL Server RDS instance in AWS (defaults to SQL Server 2016)
