@@ -454,4 +454,6 @@ If you encounter issues during the AdventureWorks setup process:
 
 To destroy the deployed resources:
 
+```bash
+pulumi destroy
 ```
