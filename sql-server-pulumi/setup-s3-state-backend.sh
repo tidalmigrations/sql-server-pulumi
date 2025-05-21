@@ -2,8 +2,13 @@
 set -e
 
 # Configuration
-BUCKET_NAME="pulumi-state-sql-server"
-AWS_REGION="us-east-2"
+BASE_BUCKET_NAME="pulumi-state-sql-server"
+# Generate a unique suffix using timestamp and random string
+TIMESTAMP=$(date +%Y%m%d%H%M%S)
+RANDOM_STRING=$(head /dev/urandom | LC_ALL=C tr -dc 'a-z0-9' | head -c 6)
+BUCKET_NAME="${BASE_BUCKET_NAME}-${TIMESTAMP}-${RANDOM_STRING}"
+# Get region from environment or use default
+AWS_REGION="${AWS_REGION:-us-east-2}"
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -11,6 +16,8 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 echo -e "${YELLOW}Setting up Pulumi S3 state backend...${NC}"
+echo "Using AWS region: ${AWS_REGION}"
+echo "Using bucket name: ${BUCKET_NAME}"
 
 # Check if the AWS CLI is installed
 if ! command -v aws &> /dev/null; then
@@ -62,4 +69,7 @@ pulumi login "s3://$BUCKET_NAME?region=$AWS_REGION"
 
 echo -e "${GREEN}Pulumi S3 state backend setup complete!${NC}"
 echo "Your Pulumi state will be stored in s3://$BUCKET_NAME"
-echo -e "You can run ${YELLOW}pulumi stack init dev${NC} to create a new stack." 
+echo -e "You can run ${YELLOW}pulumi stack init dev${NC} to create a new stack."
+
+# Save the bucket name to a file for reference
+echo "$BUCKET_NAME" > .pulumi-state-bucket 

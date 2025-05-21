@@ -1,3 +1,6 @@
+restore-adventureworks.sql
+TODO.md
+
 # Pulumi
 .pulumi/
 Pulumi.*.yaml
