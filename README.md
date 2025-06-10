@@ -75,6 +75,11 @@ Pulumi state can be stored in an S3 bucket for team collaboration and state reco
 
 2. Run the setup script:
    ```
+   aws configure sso
+
+   # Set AWS profile
+   export AWS_PROFILE=<your-profile-name>
+
    ./setup-s3-state-backend.sh
    ```
 

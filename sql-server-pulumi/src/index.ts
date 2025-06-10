@@ -12,6 +12,10 @@ const sqlServerEngine = config.get("sqlServerEngine") || "sqlserver-se"; // SQL 
 const dbParameterGroupName = config.get("dbParameterGroupName") || "default.sqlserver-se-13.0"; // Default parameter group name
 const setupAdventureWorks = config.getBoolean("setupAdventureWorks") || false; // Whether to set up AdventureWorks DB
 
+// Get stack information for deterministic naming
+const stack = pulumi.getStack();
+const project = pulumi.getProject();
+
 // Create a new VPC
 const vpc = new awsx.ec2.Vpc("sqlserver-vpc", {
     cidrBlock: "10.0.0.0/16",
@@ -73,9 +77,19 @@ const dbPassword = new random.RandomPassword("password", {
 }).result;
 
 // Store the password in AWS Secrets Manager
+// Note: If you get an error about a secret already scheduled for deletion,
+// you can either:
+// 1. Use the dynamic name approach above (recommended)
+// 2. Force delete the existing secret with: aws secretsmanager delete-secret --secret-id "rds/sqlserver-database-1/password" --force-delete-without-recovery
 const dbPasswordSecret = new aws.secretsmanager.Secret("db-password-secret", {
-    name: "rds/sqlserver-database-1/password",
+    name: `rds/${project}-${stack}/sqlserver-database-1/password`,
     description: "Password for SQL Server RDS instance",
+    recoveryWindowInDays: 0, // Allow immediate deletion without recovery window
+    tags: {
+        Name: "SQLServer-Database-Password",
+        Environment: stack,
+        Project: project,
+    },
 });
 
 const dbPasswordSecretVersion = new aws.secretsmanager.SecretVersion("db-password-secret-version", {
@@ -93,7 +107,10 @@ let optionGroup: aws.rds.OptionGroup | undefined;
 
 if (setupAdventureWorks) {
     // Create S3 bucket for AdventureWorks backup
-    const bucketName = `sqlserver-adventureworks-backups-${Date.now()}`;
+    // S3 bucket names must be <= 63 characters, so we'll use a shorter format
+    // Replace long project names with hash to ensure uniqueness while staying short
+    const projectHash = project.replace(/[^a-z0-9]/g, '').substring(0, 10);
+    const bucketName = `sqlserver-aw-${projectHash}-${stack}`.toLowerCase();
     s3Bucket = new aws.s3.Bucket("adventureworks-backup-bucket", {
         bucket: bucketName,
         acl: "private",
