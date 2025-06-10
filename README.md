@@ -371,7 +371,7 @@ The `upload-and-restore-adventureworks.sh` script automates this process:
 chmod +x upload-and-restore-adventureworks.sh
 
 # Run the script
-./upload-and-restore-adventureworks.sh
+./upload-and-restore-adventureworks.sh --auto-restore --query-after-restore
 ```
 
 **Available Script Options:**

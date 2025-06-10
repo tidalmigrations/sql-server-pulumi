@@ -14,6 +14,7 @@ DB_NAME="AdventureWorksLT"
 PULUMI_DIR="./sql-server-pulumi"
 AUTO_RESTORE=false
 QUERY_AFTER_RESTORE=false
+DEBUG_MODE=false
 
 # Process command line arguments
 while [[ $# -gt 0 ]]; do
@@ -27,11 +28,16 @@ while [[ $# -gt 0 ]]; do
             AUTO_RESTORE=true  # Auto restore is required if we want to query
             shift
             ;;
+        --debug)
+            DEBUG_MODE=true
+            shift
+            ;;
         --help)
             echo "Usage: $0 [options]"
             echo "Options:"
             echo "  --auto-restore         Automatically restore the database after upload"
             echo "  --query-after-restore  Run a test query after restoring the database"
+            echo "  --debug                Enable debug mode with verbose output"
             echo "  --help                 Show this help message"
             exit 0
             ;;
@@ -117,12 +123,53 @@ echo -e "  Username: $DB_USERNAME"
 
 # Retrieve the DB password from AWS Secrets Manager
 echo -e "${YELLOW}Retrieving SQL Server password from AWS Secrets Manager...${NC}"
-SECRET_NAME="rds/sqlserver-database-1/password"
-DB_PASSWORD=$(aws secretsmanager get-secret-value --secret-id $SECRET_NAME --query 'SecretString' --output text)
+# Get the project and stack names to construct the secret name
+# Get project name from Pulumi.yaml
+PROJECT_NAME=$(grep "^name:" Pulumi.yaml | cut -d':' -f2 | tr -d ' ')
+
+# Get current stack name
+STACK_NAME=$(pulumi stack --show-name 2>/dev/null)
+
+# If the stack name contains a slash, it means we got org/project/stack format
+if [[ "$STACK_NAME" == *"/"* ]]; then
+    # Extract just the stack name (last part after the last slash)
+    STACK_NAME=$(echo $STACK_NAME | rev | cut -d'/' -f1 | rev)
+fi
+
+SECRET_NAME="rds/${PROJECT_NAME}-${STACK_NAME}/sqlserver-database-1/password"
+
+if [ "$DEBUG_MODE" = true ]; then
+    echo -e "${BLUE}Debug: Project name: $PROJECT_NAME${NC}"
+    echo -e "${BLUE}Debug: Stack name: $STACK_NAME${NC}"
+fi
+
+echo -e "${BLUE}Using secret name: $SECRET_NAME${NC}"
+DB_PASSWORD=$(aws secretsmanager get-secret-value --secret-id $SECRET_NAME --query 'SecretString' --output text 2>/dev/null)
 
 if [ -z "$DB_PASSWORD" ]; then
-    echo -e "${RED}Failed to retrieve password from AWS Secrets Manager.${NC}"
-    exit 1
+    echo -e "${YELLOW}Failed to retrieve password using dynamic secret name. Trying legacy secret name...${NC}"
+    LEGACY_SECRET_NAME="rds/sqlserver-database-1/password"
+    DB_PASSWORD=$(aws secretsmanager get-secret-value --secret-id $LEGACY_SECRET_NAME --query 'SecretString' --output text 2>/dev/null)
+    
+    if [ -z "$DB_PASSWORD" ]; then
+        echo -e "${RED}Failed to retrieve password from AWS Secrets Manager using both dynamic and legacy secret names.${NC}"
+        echo -e "${RED}Tried:${NC}"
+        echo -e "  - $SECRET_NAME"
+        echo -e "  - $LEGACY_SECRET_NAME"
+        
+        if [ "$DEBUG_MODE" = true ]; then
+            echo -e "${YELLOW}Debug: Listing available secrets that match 'rds' pattern:${NC}"
+            aws secretsmanager list-secrets --query 'SecretList[?contains(Name, `rds`)].Name' --output table 2>/dev/null || echo -e "${RED}Failed to list secrets${NC}"
+        fi
+        
+        echo -e "${YELLOW}Please check that the secret exists and you have the correct AWS permissions.${NC}"
+        echo -e "${YELLOW}You can use --debug flag to see available secrets.${NC}"
+        exit 1
+    else
+        echo -e "${GREEN}Successfully retrieved password using legacy secret name.${NC}"
+    fi
+else
+    echo -e "${GREEN}Successfully retrieved password using dynamic secret name.${NC}"
 fi
 
 # Return to project root directory
